@@ -364,6 +364,78 @@ class ResponseApiStreamDecoderTest {
         assertSingleSearchTool(chunks)
     }
 
+    @Test
+    fun `function call output should attach tool result and mark as executed`() {
+        val decoder = ResponseApiStreamDecoder()
+        val chunks = buildList {
+            addAll(decoder.decode(functionCallItemEvent("response.output_item.added", id = "fc_1")))
+            addAll(decoder.decode(buildJsonObject {
+                put("type", "response.function_call_arguments.done")
+                put("call_id", "call_1")
+                put("arguments", "{\"command\":\"uname -a\"}")
+            }))
+            addAll(decoder.decode(functionCallItemEvent("response.output_item.done", id = "fc_1")))
+            addAll(decoder.decode(buildJsonObject {
+                put("type", "response.output_item.added")
+                put("item", buildJsonObject {
+                    put("type", "function_call_output")
+                    put("id", "fco_1")
+                    put("call_id", "call_1")
+                    put("output", "Linux herm 7.0.0-1012-oracle aarch64")
+                })
+            }))
+            addAll(decoder.decode(buildJsonObject {
+                put("type", "response.output_item.done")
+                put("item", buildJsonObject {
+                    put("type", "function_call_output")
+                    put("id", "fco_1")
+                    put("call_id", "call_1")
+                    put("output", "Linux herm 7.0.0-1012-oracle aarch64")
+                })
+            }))
+        }
+
+        val handler = StreamChunkHandler(Model(modelId = "test-model"))
+        val messages = chunks.fold(listOf(UIMessage.user("run command"))) { messages, chunk ->
+            handler.handle(messages, chunk)
+        }
+        val tool = messages.last().parts.filterIsInstance<UIMessagePart.Tool>().single()
+        assertEquals("call_1", tool.toolCallId)
+        assertTrue(tool.isExecuted)
+        val textOutput = tool.output.filterIsInstance<UIMessagePart.Text>().single()
+        assertEquals("Linux herm 7.0.0-1012-oracle aarch64", textOutput.text)
+    }
+
+    @Test
+    fun `non streaming response should parse function call output`() {
+        val result = api.parseResponseOutput(buildJsonObject {
+            put("id", "resp_1")
+            put("model", "test-model")
+            put("status", "completed")
+            put("output", buildJsonArray {
+                add(buildJsonObject {
+                    put("type", "function_call")
+                    put("id", "fc_1")
+                    put("call_id", "call_1")
+                    put("name", "terminal")
+                    put("arguments", "{\"command\":\"uname -a\"}")
+                })
+                add(buildJsonObject {
+                    put("type", "function_call_output")
+                    put("id", "fco_1")
+                    put("call_id", "call_1")
+                    put("output", "Linux herm 7.0.0-1012-oracle aarch64")
+                })
+            })
+        })
+
+        val tool = result.message.parts.filterIsInstance<UIMessagePart.Tool>().single()
+        assertEquals("call_1", tool.toolCallId)
+        assertTrue(tool.isExecuted)
+        val textOutput = tool.output.filterIsInstance<UIMessagePart.Text>().single()
+        assertEquals("Linux herm 7.0.0-1012-oracle aarch64", textOutput.text)
+    }
+
     private fun assertSingleSearchTool(chunks: List<StreamChunk>) {
         val handler = StreamChunkHandler(Model(modelId = "test-model"))
         val messages = chunks.fold(listOf(UIMessage.user("search"))) { messages, chunk ->

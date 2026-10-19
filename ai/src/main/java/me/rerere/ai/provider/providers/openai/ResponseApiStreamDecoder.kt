@@ -3,6 +3,7 @@ package me.rerere.ai.provider.providers.openai
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -95,6 +96,14 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                             initialInput = item["arguments"]?.jsonPrimitive?.contentOrNull ?: "",
                         )
                     }
+                    "function_call_output" -> {
+                        val callId = item["call_id"]?.jsonPrimitive?.contentOrNull ?: id
+                        val outputStr = item["output"]?.let { out ->
+                            if (out is JsonPrimitive && out.isString) out.content
+                            else out.toString()
+                        } ?: ""
+                        listOf(StreamChunk.ToolCallOutput(id = callId, output = outputStr))
+                    }
                     "image_generation_call" -> state.startImage(id)
                     "reasoning" -> {
                         state.reasoningMetadata[id] = OpenAIReasoningMetadata(
@@ -129,6 +138,14 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                         addAll(state.endImage(id))
                     }
                     "function_call" -> state.endTool(state.toolCallIdsByItemId.remove(id) ?: id)
+                    "function_call_output" -> {
+                        val callId = item["call_id"]?.jsonPrimitive?.contentOrNull ?: id
+                        val outputStr = item["output"]?.let { out ->
+                            if (out is JsonPrimitive && out.isString) out.content
+                            else out.toString()
+                        } ?: ""
+                        listOf(StreamChunk.ToolCallOutput(id = callId, output = outputStr))
+                    }
                     else -> if (isOpenAIServerToolCall(type)) {
                         val tool = item.toOpenAIServerTool()
                         state.endServerTool(

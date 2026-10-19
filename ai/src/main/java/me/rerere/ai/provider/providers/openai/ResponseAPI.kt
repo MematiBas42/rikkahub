@@ -617,6 +617,19 @@ class ResponseAPI(
                     )
                 }
 
+                "function_call_output" -> {
+                    val callId = output["call_id"]?.jsonPrimitive?.content ?: error("call_id not found")
+                    val outputStr = output["output"]?.let { out ->
+                        if (out is JsonPrimitive && out.isString) out.content
+                        else out.toString()
+                    } ?: ""
+                    val index = parts.indexOfLast { it is UIMessagePart.Tool && it.toolCallId == callId }
+                    if (index >= 0) {
+                        val tool = parts[index] as UIMessagePart.Tool
+                        parts[index] = tool.copy(output = listOf(UIMessagePart.Text(outputStr)))
+                    }
+                }
+
                 "message" -> {
                     val content = output["content"]?.jsonArray ?: error("content not found")
                     content.map { it.jsonObject }.forEach { part ->

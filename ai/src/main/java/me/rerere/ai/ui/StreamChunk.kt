@@ -79,6 +79,14 @@ sealed class StreamChunk {
     data class ToolCallEnd(val id: String) : StreamChunk()
 
     @Serializable
+    @SerialName("tool_call_output")
+    data class ToolCallOutput(
+        val id: String,
+        val output: String,
+        val metadata: JsonObject? = null,
+    ) : StreamChunk()
+
+    @Serializable
     @SerialName("server_tool_start")
     data class ServerToolStart(
         val id: String,
